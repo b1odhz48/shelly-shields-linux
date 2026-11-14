@@ -1,0 +1,9 @@
+git
+curl
+jq
+python
+python-pip
+neovim
+tmux
+ripgrep
+fd

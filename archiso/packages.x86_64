@@ -1,0 +1,8 @@
+# Additional packages appended to official releng packages
+python
+python-pip
+nmap
+jq
+git
+neovim
+tmux

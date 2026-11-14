@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+"""Shelly Shields CLI: no autonomous execution of generated commands."""
+import argparse, json, os, shutil, sys, urllib.request, urllib.error
+
+def chat(prompt, model, cloud=False):
+    if cloud:
+        endpoint=os.environ.get('SHELLY_CLOUD_ENDPOINT','')
+        key=os.environ.get('SHELLY_CLOUD_API_KEY','')
+        model=os.environ.get('SHELLY_CLOUD_MODEL',model)
+        if not endpoint.startswith('https://') or not key:
+            raise ValueError('Cloud requires HTTPS SHELLY_CLOUD_ENDPOINT and SHELLY_CLOUD_API_KEY')
+        payload={'model':model,'messages':[{'role':'system','content':'You are Shelly, a defensive security research assistant. Explain risks, suggest safe tests for authorized systems, and never claim to have run commands.'},{'role':'user','content':prompt}], 'stream':False}
+        headers={'Content-Type':'application/json','Authorization':'Bearer '+key}
+    else:
+        endpoint='http://127.0.0.1:11434/api/chat'
+        payload={'model':model,'messages':[{'role':'system','content':'You are Shelly, a local security assistant. Do not claim to have run commands or accessed files.'},{'role':'user','content':prompt}], 'stream':False}
+        headers={'Content-Type':'application/json'}
+    req=urllib.request.Request(endpoint, data=json.dumps(payload).encode(),headers=headers,method='POST')
+    with urllib.request.urlopen(req,timeout=120) as res:
+        body=json.load(res)
+    return body.get('message',{}).get('content','') if not cloud else body.get('choices',[{}])[0].get('message',{}).get('content','')
+
+def main():
+    p=argparse.ArgumentParser(prog='shelly',description='Shelly Shields Linux toolkit')
+    sub=p.add_subparsers(dest='command',required=True)
+    sub.add_parser('doctor',help='Show installed components')
+    sub.add_parser('tools',help='List supported tools')
+    ai=sub.add_parser('ai',help='Ask the local or opt-in cloud assistant')
+    ai.add_argument('prompt',nargs='*'); ai.add_argument('--model',default='llama3.2:3b');ai.add_argument('--cloud',action='store_true')
+    a=p.parse_args()
+    if a.command=='doctor':
+        for cmd in ['pacman','Hyprland','ollama','nvidia-smi','nmap','wireshark','suricata','ufw']:
+            print(f'{cmd:15} {shutil.which(cmd) or "not found"}')
+    elif a.command=='tools':
+        print('Profiles: core, recon, web, forensics, defense, nvidia')
+        print('Run ./install.sh --dry-run --profile PROFILE to review installation.')
+    elif a.command=='ai':
+        prompt=' '.join(a.prompt).strip() or sys.stdin.read().strip()
+        if not prompt:p.error('Provide a prompt or pipe text to stdin')
+        try: print(chat(prompt,a.model,a.cloud))
+        except (ValueError,urllib.error.URLError,TimeoutError,KeyError,IndexError) as e:
+            print(f'AI request failed: {e}',file=sys.stderr);sys.exit(1)
+if __name__=='__main__':main()
